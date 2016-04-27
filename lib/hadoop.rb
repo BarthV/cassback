@@ -13,5 +13,6 @@ class Hadoop < WebHDFS::Client
     @retry_known_errors = true
     @retry_times = retry_times
     @retry_interval = retry_interval
+    @read_timeout = 300
   end
 end
