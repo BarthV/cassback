@@ -207,6 +207,7 @@ begin
 #  In case of failure
 rescue Exception => e
   logger.error(e.message)
+  logger.error('Exiting the program with exit code 1.')
   exit(1)
 end
 

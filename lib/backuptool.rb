@@ -100,18 +100,12 @@ class BackupTool
     index = 0
     number_of_files = files.size
     total_file_size = 0
+    #TODO : paralelizing this will improve performance ??
     files.each do |file|
       index += 1
       local = @cassandra.data_path + '/' + file
-      local_file_size = File.size(local)
-      total_file_size += local_file_size
-      pretty_size = Filesize.from("#{local_file_size} B").pretty
-      @logger.info("Sending file #{index}/#{number_of_files} #{file} having size #{pretty_size} to Hadoop")
       remote = @hadoop.base_dir + '/' + snapshot.cluster + '/' + snapshot.node + '/' + file
-      @logger.debug("#{local} => #{remote}")
-      f = File.open(local, 'r')
-      @hadoop.create(remote, f, overwrite: true)
-      f.close
+      upload_file(local, remote, index, number_of_files)
     end
 
     total_file_size_pretty = Filesize.from("#{total_file_size} B").pretty
@@ -124,6 +118,34 @@ class BackupTool
 
     @cassandra.delete_snapshot(snapshot)
     @logger.info('Success !')
+  end
+
+  def upload_file(local_file, remote_file, file_index, number_of_files)
+    local_file_size = File.size(local_file)
+    pretty_size = Filesize.from("#{local_file_size} B").pretty
+    @logger.info("Sending file #{file_index}/#{number_of_files} : #{remote_file} having size #{pretty_size} to Hadoop")
+    @logger.debug("#{local_file} => #{remote_file}")
+
+    file_uploaded = false
+    retries_number = 0
+
+    while !file_uploaded && retries_number < @hadoop.retry_times do
+      f = File.open(local_file, 'r')
+      begin
+        @hadoop.create(remote_file, f, overwrite: true)
+        file_uploaded = true
+      rescue StandardError
+        retries_number += 1
+        @logger.error("Attempt #{retries_number}/#{@hadoop.retry_times} of uploading #{local_file} failed.")
+      ensure
+        f.close unless f.nil?
+      end
+    end
+
+    unless file_uploaded
+      raise "Upload of file #{local_file} failed, cancelling the job..."
+    end
+
   end
 
   def delete_snapshots(node: @cassandra.node_name, date: 'ALL')
